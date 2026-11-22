@@ -1942,6 +1942,7 @@ public class KeyguardViewMediator implements CoreStartable,
      * @param offReason either {@link WindowManagerPolicyConstants#OFF_BECAUSE_OF_USER} or
      * {@link WindowManagerPolicyConstants#OFF_BECAUSE_OF_TIMEOUT}.
      */
+
     public void onStartedGoingToSleep(@WindowManagerPolicyConstants.OffReason int offReason) {
         if (DEBUG) Log.d(TAG, "onStartedGoingToSleep(" + offReason + ")");
         synchronized (this) {
@@ -1973,6 +1974,14 @@ public class KeyguardViewMediator implements CoreStartable,
             } else if (!mLockPatternUtils.isLockScreenDisabled(currentUser)) {
                 setPendingLock(true);
             }
+
+            Log.i(TAG, "SNDDBG lockSleep: mShowing=" + mShowing
+                + " goingAway=" + mKeyguardStateController.isKeyguardGoingAway()
+                + " lockImmediately=" + lockImmediately
+                + " timeout=" + timeout
+                + " lockLater=" + mLockLater
+                + " pendingLock=" + mPendingLock
+                + " offReason=" + offReason);
 
             if (mPendingLock) {
                 playSounds(true);
@@ -3177,6 +3186,10 @@ public class KeyguardViewMediator implements CoreStartable,
     }
 
     private void playSound(int soundId) {
+        Log.i(TAG, "SNDDBG playSound id=" + soundId
+            + " enabled=" + mSystemSettings.getIntForUser(LOCKSCREEN_SOUNDS_ENABLED, 1,
+                    mSelectedUserInteractor.getSelectedUserId())
+            + " sinceLast=" + (mSystemClock.elapsedRealtime() - mLastTimeSoundWasPlayed));
         if (soundId == 0) return;
         int lockscreenSoundsEnabled = mSystemSettings.getIntForUser(LOCKSCREEN_SOUNDS_ENABLED, 1,
                 mSelectedUserInteractor.getSelectedUserId());
@@ -3193,11 +3206,15 @@ public class KeyguardViewMediator implements CoreStartable,
             }
 
             mUiBgExecutor.execute(() -> {
-                // If the stream is muted, don't play the sound
-                if (mAudioManager.isStreamMute(mUiSoundsStreamType)) return;
+                // If the stream is muted, don't play the sound; Log the mute status
+                if (mAudioManager.isStreamMute(mUiSoundsStreamType)) {
+                    Log.i(TAG, "SNDDBG muted, not playing");
+                    return;
+                }
 
                 int id = mLockSounds.play(soundId,
                         mLockSoundVolume, mLockSoundVolume, 1/*priority*/, 0/*loop*/, 1.0f/*rate*/);
+                Log.i(TAG, "SNDDBG play() returned stream=" + id);
                 synchronized (this) {
                     mLockSoundStreamId = id;
                 }
@@ -3755,6 +3772,10 @@ public class KeyguardViewMediator implements CoreStartable,
 
     private void onKeyguardExitFinished(String reason) {
         if (DEBUG) Log.d(TAG, "onKeyguardExitFinished()");
+        Log.i(TAG, "SNDDBG exitFinished: mShowing=" + mShowing
+        + " interactive=" + mDeviceInteractive
+        + " wakeAndUnlocking=" + mWakeAndUnlocking
+        + " phone=" + mPhoneState + " reason=" + reason);
         // only play "unlock" noises if not on a call (since the incall UI
         // disables the keyguard)
         if (TelephonyManager.EXTRA_STATE_IDLE.equals(mPhoneState)) {
@@ -4374,6 +4395,8 @@ public class KeyguardViewMediator implements CoreStartable,
     }
 
     private void setShowingLocked(boolean showing, boolean forceCallbacks, String reason) {
+        Log.i(TAG, "SNDDBG setShowingLocked: new=" + showing + " old=" + mShowing
+                + " force=" + forceCallbacks + " reason=" + reason);
         final boolean aodShowing = mDozing && !mWakeAndUnlocking;
         final boolean notifyDefaultDisplayCallbacks = showing != mShowing || forceCallbacks;
         final boolean updateActivityLockScreenState = showing != mShowing
