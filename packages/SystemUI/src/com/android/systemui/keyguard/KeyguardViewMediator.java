@@ -1959,7 +1959,11 @@ public class KeyguardViewMediator implements CoreStartable,
                             || !mLockPatternUtils.isSecure(currentUser);
             long timeout = getLockTimeout(mSelectedUserInteractor.getSelectedUserId());
             mLockLater = false;
-            if (mShowing && !mKeyguardStateController.isKeyguardGoingAway()) {
+            if (mShowing && !mHiding && !mKeyguardStateController.isKeyguardGoingAway()) {
+                // With scene container, a screen-off wake-and-unlock never reaches
+                // onKeyguardExitFinished, so mShowing/mHiding stay stale. Don't take the
+                // "keyguard still showing" branch while a hide is pending.
+
                 // If we are going to sleep but the keyguard is showing (and will continue to be
                 // showing, not in the process of going away) then reset its state. Otherwise, let
                 // this fall through and explicitly re-lock the keyguard.
@@ -1976,6 +1980,7 @@ public class KeyguardViewMediator implements CoreStartable,
             }
 
             Log.i(TAG, "SNDDBG lockSleep: mShowing=" + mShowing
+                + " hiding=" + mHiding
                 + " goingAway=" + mKeyguardStateController.isKeyguardGoingAway()
                 + " lockImmediately=" + lockImmediately
                 + " timeout=" + timeout
@@ -3495,6 +3500,8 @@ public class KeyguardViewMediator implements CoreStartable,
         // }
 
         synchronized (KeyguardViewMediator.this) {
+            Log.i(TAG, "SNDDBG handleHide: showing=" + mShowing + " occluded=" + mOccluded
+        + " wakeAndUnlocking=" + mWakeAndUnlocking + " interactive=" + mDeviceInteractive);
             if (DEBUG) Log.d(TAG, "handleHide");
 
             // If waking and unlocking, waking from dream has been set properly.
@@ -3510,6 +3517,14 @@ public class KeyguardViewMediator implements CoreStartable,
                 mHiding = true;
                 mLastHideRequest = mLastShowRequest;
                 mKeyguardGoingAwayRunnable.run();
+
+                // No exit animation runs for a screen-off wake-and-unlock, so
+                // onKeyguardExitFinished() never plays the unlock sound. Play it here.
+                if (mWakeAndUnlocking && !mDeviceInteractive
+                        && TelephonyManager.EXTRA_STATE_IDLE.equals(mPhoneState)) {
+                    Log.i(TAG, "SNDDBG handleHide: playing wake-and-unlock sound");
+                    playSounds(false);
+                }
             } else {
                 if (!KeyguardWmStateRefactor.isEnabled()) {
                     mKeyguardViewControllerLazy.get().hide(
