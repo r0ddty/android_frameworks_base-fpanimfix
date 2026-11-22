@@ -460,6 +460,10 @@ public class KeyguardViewMediator implements CoreStartable,
 
     private boolean mWakeAndUnlocking = false;
 
+    // Set when a screen-off wake-and-unlock finished without an exit animation, so
+    // onKeyguardExitFinished() never ran and mShowing/mHiding are stale.
+    private boolean mStateStaleAfterWakeAndUnlock;
+
     /**
      * Helps remember whether the screen has turned on since the last time it turned off due to
      * timeout. See {@link #onScreenTurnedOff}
@@ -1959,11 +1963,12 @@ public class KeyguardViewMediator implements CoreStartable,
                             || !mLockPatternUtils.isSecure(currentUser);
             long timeout = getLockTimeout(mSelectedUserInteractor.getSelectedUserId());
             mLockLater = false;
-            if (mShowing && !mHiding && !mKeyguardStateController.isKeyguardGoingAway()) {
-                // With scene container, a screen-off wake-and-unlock never reaches
-                // onKeyguardExitFinished, so mShowing/mHiding stay stale. Don't take the
-                // "keyguard still showing" branch while a hide is pending.
-
+            if (mStateStaleAfterWakeAndUnlock) {
+                mStateStaleAfterWakeAndUnlock = false;
+                mHiding = false;
+                setShowingLocked(false, "stale after screen-off wake-and-unlock");
+            }
+            if (mShowing && !mKeyguardStateController.isKeyguardGoingAway()) {
                 // If we are going to sleep but the keyguard is showing (and will continue to be
                 // showing, not in the process of going away) then reset its state. Otherwise, let
                 // this fall through and explicitly re-lock the keyguard.
@@ -3523,6 +3528,7 @@ public class KeyguardViewMediator implements CoreStartable,
                 if (mWakeAndUnlocking && !mDeviceInteractive
                         && TelephonyManager.EXTRA_STATE_IDLE.equals(mPhoneState)) {
                     Log.i(TAG, "SNDDBG handleHide: playing wake-and-unlock sound");
+                    mStateStaleAfterWakeAndUnlock = true;
                     playSounds(false);
                 }
             } else {
@@ -3805,6 +3811,7 @@ public class KeyguardViewMediator implements CoreStartable,
             setShowingLocked(false, "onKeyguardExitFinished: " + reason);
         }
         mWakeAndUnlocking = false;
+        mStateStaleAfterWakeAndUnlock = false;
 
         if (!KeyguardWmStateRefactor.isEnabled()) {
             mDismissCallbackRegistry.notifyDismissSucceeded();
